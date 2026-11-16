@@ -144,7 +144,7 @@ input[type=color]::-webkit-color-swatch-wrapper{padding:0}input[type=color]::-we
 <header class="hdr glass">
  <div class="brand">
   <div class="logo" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32"><g fill="#fff"><path d="M16 4c3 4 4.5 8 4.5 11.5S18.6 22 16 24c-2.6-2-4.5-5-4.5-8.5S13 8 16 4z" opacity=".95"/><path d="M5 11c4.5 0 8.3 2.4 10 6.5 1 2.4.9 5 .5 6.5-3.2-.3-6.3-1.8-8.2-4.6C5.6 16.9 5 14 5 11z" opacity=".75"/><path d="M27 11c-4.5 0-8.3 2.4-10 6.5-1 2.4-.9 5-.5 6.5 3.2-.3 6.3-1.8 8.2-4.6 1.7-2.5 2.3-5.4 2.3-8.4z" opacity=".75"/><rect x="7" y="26" width="18" height="2.6" rx="1.3" opacity=".9"/></g></svg></div>
-  <div><h1>Carizma <span>Sub</span></h1><p>زیرنویس SRT روی ویدیو، با استایل حرفه‌ای و متن تیز</p></div>
+  <div><h1>Carizma <span>Sub</span></h1><p>زیرنویس SRT روی ویدیو، با استایل حرفه‌ای و متن تیز · <b dir="ltr">v2.2</b></p></div>
  </div>
  <div class="acts">
   <label class="b pri" for="fVid">ویدیو</label><input id="fVid" type="file" accept="video/*" class="hide">
@@ -2484,6 +2484,8 @@ function demux(buf){const f=MP4Box.createFile(),out={f,info:null,v:[],a:[]};let 
  buf.fileStart=0;f.appendBuffer(buf);f.flush();if(er)throw new Error(String(er));if(!out.vt)throw new Error('ترک ویدیو پیدا نشد');return out}
 function boxBytes(b){const s=new DataStream(undefined,0,DataStream.BIG_ENDIAN);b.write(s);return new Uint8Array(s.buffer,8)}
 function vDesc(f,id){for(const e of f.getTrackById(id).mdia.minf.stbl.stsd.entries){const b=e.avcC||e.hvcC||e.vpcC||e.av1C;if(b)return boxBytes(b)}}
+function copyAudio(D){const at=D.at;if(!at||!D.a.length)return null;const ad=aDesc(D.f,at.id);if(!(/^mp4a\.40/.test(at.codec)&&ad&&(ad[0]>>3)>0&&ad[0]!==3))return null;return{desc:ad,sr:at.audio.sample_rate,ch:at.audio.channel_count,codec:at.codec,samples:D.a}}
+function addCopied(mux,cp){const a0=cp.samples[0].cts;cp.samples.forEach((s,i)=>mux.addAudioChunkRaw(s.data,'key',Math.round((s.cts-a0)*1e6/s.timescale),Math.round(s.duration*1e6/s.timescale),i?undefined:{decoderConfig:{codec:cp.codec,sampleRate:cp.sr,numberOfChannels:cp.ch,description:cp.desc}}))}
 function aDesc(f,id){try{const e=f.getTrackById(id).mdia.minf.stbl.stsd.entries[0];const d=e.esds.esd.descs[0].descs[0].data;return d&&d.length?new Uint8Array(d):null}catch(e){return null}}
 async function encDemux(cv){msg(0,'خواندن فایل…');const buf=await file.arrayBuffer();if(stop)throw STOP();
  const D=demux(buf),vt=D.vt,at=D.at,f=D.f;if(!D.v.length)throw new Error('نمونهٔ ویدیو نیست');
@@ -2530,9 +2532,11 @@ async function encDemux(cv){msg(0,'خواندن فایل…');const buf=await fi
  msg(1,`تمام شد — ${done} فریم از ${total}`);return new Blob([tgt.buffer],{type:'video/mp4'})}
 async function encWC(v,cv){const[W,H]=outDims(),fps=srcFps||30,br=vBr();msg(0,'آماده‌سازی…');
  const vc=await pickCodec(W,H,fps,br);if(!vc)return encRT(v,cv);
- const ab=await audioTrack(),ac=ab&&'AudioEncoder'in window?await pickAudio(ab):null;
+ let cp=null;try{if(window.MP4Box)cp=copyAudio(demux(await file.arrayBuffer()))}catch(e){console.warn(e)}
+ const ab=cp?null:await audioTrack(),ac=ab&&'AudioEncoder'in window?await pickAudio(ab):null;
  const tgt=new Mp4Muxer.ArrayBufferTarget();
- const mux=new Mp4Muxer.Muxer({target:tgt,fastStart:'in-memory',firstTimestampBehavior:'offset',video:{codec:vc.m,width:W,height:H,frameRate:fps},...(ac?{audio:{codec:ac.m,numberOfChannels:ac.cfg.numberOfChannels,sampleRate:ac.cfg.sampleRate}}:{})});
+ const mux=new Mp4Muxer.Muxer({target:tgt,fastStart:'in-memory',firstTimestampBehavior:'offset',video:{codec:vc.m,width:W,height:H,frameRate:fps},...(cp?{audio:{codec:'aac',numberOfChannels:cp.ch,sampleRate:cp.sr}}:ac?{audio:{codec:ac.m,numberOfChannels:ac.cfg.numberOfChannels,sampleRate:ac.cfg.sampleRate}}:{})});
+ if(cp)addCopied(mux,cp);
  let err=null;const ve=new VideoEncoder({output:(c,m)=>mux.addVideoChunk(c,m),error:e=>err=e});ve.configure(vc.cfg);
  if(ac){msg(0,'رمزگذاری صدا…');const a2=await resample(ab,ac.cfg.sampleRate);const asc=ac.m==='aac'?ascFor(ac.cfg.sampleRate,ac.cfg.numberOfChannels):null;const ae=new AudioEncoder({output:(c,m)=>mux.addAudioChunk(c,asc?{decoderConfig:{codec:'mp4a.40.2',sampleRate:ac.cfg.sampleRate,numberOfChannels:ac.cfg.numberOfChannels,description:asc}}:m),error:e=>err=e});ae.configure(ac.cfg);
   const ch=ac.cfg.numberOfChannels,N=a2.length,Bk=4096,chans=[...Array(ch)].map((_,i)=>a2.getChannelData(Math.min(i,a2.numberOfChannels-1)));
@@ -2546,7 +2550,7 @@ async function encWC(v,cv){const[W,H]=outDims(),fps=srcFps||30,br=vBr();msg(0,'�
   const fr=new VideoFrame(cv,{timestamp:Math.round(t*1e6),duration:Math.round(1e6/fps)});ve.encode(fr,{keyFrame:n%(fps*2)===0});fr.close();
   while(ve.encodeQueueSize>3)await new Promise(r=>setTimeout(r,4));
   if(n%5===0){const el=(performance.now()-t0)/1000,eta=el/(n+1)*(N-n-1);msg((n+1)/N,`فریم ${n+1} از ${N} — حدود ${Math.ceil(eta)} ثانیه مانده`)}}
- await ve.flush();ve.close();mux.finalize();if(err)throw err;expMode='روش جایگزین';msg(1,'تمام شد');return new Blob([tgt.buffer],{type:'video/mp4'})}
+ await ve.flush();ve.close();mux.finalize();if(err)throw err;expMode='روش جایگزین'+(cp?' — صدای اصلی':ac?' — صدا':' — بدون صدا');msg(1,'تمام شد');return new Blob([tgt.buffer],{type:'video/mp4'})}
 async function encRT(v,cv){const[W,H]=outDims(),fps=Math.round(srcFps||30);cv.width=W;cv.height=H;const c=cv.getContext('2d');v.muted=false;v.currentTime=0;
  const st=cv.captureStream(fps);try{const AC=window.AudioContext||window.webkitAudioContext,ac=new AC(),src=ac.createMediaElementSource(v),d=ac.createMediaStreamDestination();src.connect(d);d.stream.getAudioTracks().forEach(t=>st.addTrack(t))}catch(e){}
  const mime=['video/mp4;codecs=avc1','video/mp4','video/webm;codecs=vp9','video/webm'].find(m=>window.MediaRecorder&&MediaRecorder.isTypeSupported(m));if(!mime)throw new Error('ضبط ویدیو در این مرورگر پشتیبانی نمی‌شود');
