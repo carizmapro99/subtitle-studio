@@ -1,15 +1,15 @@
 {
  "name": "Carizma Sub",
  "short_name": "Carizma Sub",
- "description": "زیرنویس SRT را با استایل‌های حرفه‌ای روی ویدیو بچسبان و با متن تیز خروجی بگیر.",
+ "description": "زیرنویس SRT روی ویدیو با استایل حرفه‌ای و خروجی تیز",
  "lang": "fa",
  "dir": "rtl",
  "start_url": "./",
  "scope": "./",
  "display": "standalone",
  "orientation": "portrait",
- "background_color": "#e6e9ef",
- "theme_color": "#dfe4ee",
+ "background_color": "#ffffff",
+ "theme_color": "#ffffff",
  "icons": [
   {
    "src": "icon-192.png",
