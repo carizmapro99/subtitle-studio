@@ -144,7 +144,7 @@ input[type=color]::-webkit-color-swatch-wrapper{padding:0}input[type=color]::-we
 <header class="hdr glass">
  <div class="brand">
   <div class="logo" aria-hidden="true"><svg width="30" height="30" viewBox="0 0 32 32"><g fill="#fff"><path d="M16 4c3 4 4.5 8 4.5 11.5S18.6 22 16 24c-2.6-2-4.5-5-4.5-8.5S13 8 16 4z" opacity=".95"/><path d="M5 11c4.5 0 8.3 2.4 10 6.5 1 2.4.9 5 .5 6.5-3.2-.3-6.3-1.8-8.2-4.6C5.6 16.9 5 14 5 11z" opacity=".75"/><path d="M27 11c-4.5 0-8.3 2.4-10 6.5-1 2.4-.9 5-.5 6.5 3.2-.3 6.3-1.8 8.2-4.6 1.7-2.5 2.3-5.4 2.3-8.4z" opacity=".75"/><rect x="7" y="26" width="18" height="2.6" rx="1.3" opacity=".9"/></g></svg></div>
-  <div><h1>Carizma <span>Sub</span></h1><p>زیرنویس SRT روی ویدیو، با استایل حرفه‌ای و متن تیز · <b dir="ltr">v2.2</b></p></div>
+  <div><h1>Carizma <span>Sub</span></h1><p>زیرنویس SRT روی ویدیو، با استایل حرفه‌ای و متن تیز · <b dir="ltr">v2.3</b></p></div>
  </div>
  <div class="acts">
   <label class="b pri" for="fVid">ویدیو</label><input id="fVid" type="file" accept="video/*" class="hide">
@@ -2475,7 +2475,7 @@ $('#goExp').onclick=async()=>{if(!hasVid)return;stop=false;vid.pause();openM('#m
  finally{$('#stopExp').classList.add('hide');$('#closeExp').classList.remove('hide');if(v){v.removeAttribute('src');try{v.load()}catch(e){}}}};
 const STOP=()=>Object.assign(new Error('متوقف شد'),{stop:1});
 let srcFps=0,expMode='';
-function ascFor(sr,ch){const idx=[96000,88200,64000,48000,44100,32000,24000,22050,16000,12000,11025,8000,7350].indexOf(sr);return new Uint8Array([(2<<3)|(idx>>1),((idx&1)<<7)|(ch<<3)])}
+function ascFor(sr,ch){const rates=[96000,88200,64000,48000,44100,32000,24000,22050,16000,12000,11025,8000,7350];let idx=rates.indexOf(sr);if(idx<0)idx=3;const c=Math.min(2,Math.max(1,ch||2));return new Uint8Array([(2<<3)|(idx>>1),((idx&1)<<7)|(c<<3)])}
 function demux(buf){const f=MP4Box.createFile(),out={f,info:null,v:[],a:[]};let er=null;
  f.onError=e=>er=e;
  f.onReady=info=>{out.info=info;out.vt=info.videoTracks[0];out.at=info.audioTracks[0];
@@ -2484,9 +2484,9 @@ function demux(buf){const f=MP4Box.createFile(),out={f,info:null,v:[],a:[]};let 
  buf.fileStart=0;f.appendBuffer(buf);f.flush();if(er)throw new Error(String(er));if(!out.vt)throw new Error('ترک ویدیو پیدا نشد');return out}
 function boxBytes(b){const s=new DataStream(undefined,0,DataStream.BIG_ENDIAN);b.write(s);return new Uint8Array(s.buffer,8)}
 function vDesc(f,id){for(const e of f.getTrackById(id).mdia.minf.stbl.stsd.entries){const b=e.avcC||e.hvcC||e.vpcC||e.av1C;if(b)return boxBytes(b)}}
-function copyAudio(D){const at=D.at;if(!at||!D.a.length)return null;const ad=aDesc(D.f,at.id);if(!(/^mp4a\.40/.test(at.codec)&&ad&&(ad[0]>>3)>0&&ad[0]!==3))return null;return{desc:ad,sr:at.audio.sample_rate,ch:at.audio.channel_count,codec:at.codec,samples:D.a}}
+function copyAudio(D){const at=D.at;if(!at||!D.a.length)return null;if(!/^mp4a/i.test(at.codec))return null;const ad=aDesc(D.f,at.id);if(!ad)return null;return{desc:ad,sr:at.audio.sample_rate,ch:at.audio.channel_count,codec:'mp4a.40.2',samples:D.a}}
 function addCopied(mux,cp){const a0=cp.samples[0].cts;cp.samples.forEach((s,i)=>mux.addAudioChunkRaw(s.data,'key',Math.round((s.cts-a0)*1e6/s.timescale),Math.round(s.duration*1e6/s.timescale),i?undefined:{decoderConfig:{codec:cp.codec,sampleRate:cp.sr,numberOfChannels:cp.ch,description:cp.desc}}))}
-function aDesc(f,id){try{const e=f.getTrackById(id).mdia.minf.stbl.stsd.entries[0];const d=e.esds.esd.descs[0].descs[0].data;return d&&d.length?new Uint8Array(d):null}catch(e){return null}}
+function aDesc(f,id){try{const e=f.getTrackById(id).mdia.minf.stbl.stsd.entries[0];const dcd=e.esds?.esd?.findDescriptor?e.esds.esd.findDescriptor(4):e.esds?.esd?.descs?.[0];const dsi=dcd?.findDescriptor?dcd.findDescriptor(5):dcd?.descs?.[0];if(dsi&&dsi.data&&dsi.data.length)return new Uint8Array(dsi.data)}catch(err){}try{const tr=f.getTrackById(id);const entry=tr.mdia.minf.stbl.stsd.entries[0];return ascFor(entry.getSampleRate(),entry.getChannelCount())}catch(err){return null}}
 async function encDemux(cv){msg(0,'خواندن فایل…');const buf=await file.arrayBuffer();if(stop)throw STOP();
  const D=demux(buf),vt=D.vt,at=D.at,f=D.f;if(!D.v.length)throw new Error('نمونهٔ ویدیو نیست');
  const desc=vDesc(f,vt.id),dcfg={codec:vt.codec,codedWidth:vt.video.width,codedHeight:vt.video.height,...(desc?{description:desc}:{})};
@@ -2494,14 +2494,13 @@ async function encDemux(cv){msg(0,'خواندن فایل…');const buf=await fi
  const vdur=vt.duration/vt.timescale||dur;srcFps=D.v.length/vdur;
  const[W,H]=outDims(),br=vBr();const vc=await pickCodec(W,H,Math.round(srcFps),br);if(!vc)throw new Error('encoder unsupported');
  // audio: copy original AAC untouched, else re-encode
- let audioCopy=null,ac=null,ab=null;
- if(at&&D.a.length){const ad=aDesc(f,at.id);if(/^mp4a\.40/.test(at.codec)&&ad&&(ad[0]>>3)>0&&(ad[0]>>3)<32&&ad[0]!==3)audioCopy={desc:ad,sr:at.audio.sample_rate,ch:at.audio.channel_count,codec:at.codec};
-  else{ab=await audioTrack();ac=ab&&'AudioEncoder'in window?await pickAudio(ab):null}}
+ let audioCopy=copyAudio(D),ac=null,ab=null;
+ if(!audioCopy&&at){ab=await audioTrack();ac=ab&&'AudioEncoder'in window?await pickAudio(ab):null}
  const tgt=new Mp4Muxer.ArrayBufferTarget();
  const audioOpt=audioCopy?{codec:'aac',numberOfChannels:audioCopy.ch,sampleRate:audioCopy.sr}:ac?{codec:ac.m,numberOfChannels:ac.cfg.numberOfChannels,sampleRate:ac.cfg.sampleRate}:null;
  const mux=new Mp4Muxer.Muxer({target:tgt,fastStart:'in-memory',firstTimestampBehavior:'offset',video:{codec:vc.m,width:W,height:H,frameRate:Math.round(srcFps)},...(audioOpt?{audio:audioOpt}:{})});
  let err=null;
- if(audioCopy){msg(0,'کپی صدای اصلی…');const a0=D.a[0].cts;D.a.forEach((s,i)=>mux.addAudioChunkRaw(s.data,'key',Math.round((s.cts-a0)*1e6/s.timescale),Math.round(s.duration*1e6/s.timescale),i?undefined:{decoderConfig:{codec:audioCopy.codec,sampleRate:audioCopy.sr,numberOfChannels:audioCopy.ch,description:audioCopy.desc}}))}
+ if(audioCopy){msg(0,'کپی صدای اصلی…');addCopied(mux,audioCopy)}
  else if(ac){msg(0,'رمزگذاری صدا…');const a2=await resample(ab,ac.cfg.sampleRate);const asc=ac.m==='aac'?ascFor(ac.cfg.sampleRate,ac.cfg.numberOfChannels):null;
   const ae=new AudioEncoder({output:(c,m)=>mux.addAudioChunk(c,asc?{decoderConfig:{codec:'mp4a.40.2',sampleRate:ac.cfg.sampleRate,numberOfChannels:ac.cfg.numberOfChannels,description:asc}}:m),error:e=>err=e});ae.configure(ac.cfg);
   const ch=ac.cfg.numberOfChannels,N=a2.length,Bk=4096,chans=[...Array(ch)].map((_,i)=>a2.getChannelData(Math.min(i,a2.numberOfChannels-1)));
